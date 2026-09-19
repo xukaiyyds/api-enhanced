@@ -280,6 +280,33 @@ async function constructServer(moduleDefs) {
     moduleDefs ||
     (await getModulesDefinitions(path.join(__dirname, 'module'), special))
 
+  // 注册音频代理路由
+app.get('/api/audio', async (req, res) => {
+  // 从查询参数中获取目标 URL
+  const targetUrl = req.query.url;
+  if (!targetUrl) {
+    return res.status(400).json({ code: 400, msg: '缺少 url 参数' });
+  }
+
+  // 直接调用我们刚刚编写的模块逻辑
+  const audioProxy = require('./custom/audio_proxy');
+  const result = await audioProxy({ url: targetUrl, range: req.headers.range }, {});
+
+  if (result._stream) {
+    // 处理流式响应
+    res.status(result.status);
+    for (const [key, value] of Object.entries(result._stream.headers)) {
+      if (value) res.setHeader(key, value);
+    }
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    res.setHeader('Access-Control-Allow-Origin', '*'); // 允许跨域，方便前端调用
+    await pipeline(result._stream.body, res);
+  } else {
+    // 处理普通错误响应
+    res.status(result.status).json(result.body);
+  }
+});
+  
   for (const moduleDef of moduleDefinitions) {
     // Register the route.
     app.all(moduleDef.route, async (req, res) => {
